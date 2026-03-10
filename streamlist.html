@@ -289,6 +289,17 @@
   .badge-prime { background: var(--prime); color: #fff; }
   .badge-sky { background: var(--sky); color: #fff; }
 
+  .card-provider-logo {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 32px;
+    height: 32px;
+    border-radius: 7px;
+    object-fit: cover;
+    border: 1px solid rgba(255,255,255,0.15);
+  }
+
   .card-watchlist-btn {
     position: absolute;
     top: 8px;
@@ -710,6 +721,7 @@ let state = {
   watched: [],
   currentItem: null,
   page: 1,
+  totalPages: 1,
   loading: false,
 };
 
@@ -759,46 +771,110 @@ function updateCounts() {
 }
 
 // FETCH
-async function fetchCatalog() {
+async function fetchPage(page, append = false) {
   if (state.loading) return;
   state.loading = true;
-  document.getElementById('mainContent').innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+
+  if (!append) {
+    document.getElementById('mainContent').innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+    state.results = [];
+  } else {
+    // Show inline loader at bottom
+    const loader = document.createElement('div');
+    loader.className = 'loader';
+    loader.id = 'bottomLoader';
+    loader.innerHTML = '<div class="spinner"></div>';
+    document.getElementById('mainContent').appendChild(loader);
+  }
 
   try {
     let items = [];
 
     if (state.searchQuery.length > 1) {
-      const url = `https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&query=${encodeURIComponent(state.searchQuery)}&language=es-ES&page=1&include_adult=false`;
+      const url = `https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&query=${encodeURIComponent(state.searchQuery)}&language=es-ES&page=${page}&include_adult=false`;
       const res = await fetch(url);
       const data = await res.json();
-      items = (data.results || []).filter(x => x.media_type === 'movie' || x.media_type === 'tv');
+      state.totalPages = Math.min(data.total_pages || 1, 10);
+      const raw = (data.results || []).filter(x => x.media_type === 'movie' || x.media_type === 'tv');
+      const provChecks = await Promise.all(raw.map(async x => {
+        try {
+          const r = await fetch(`https://api.themoviedb.org/3/${x.media_type}/${x.id}/watch/providers?api_key=${API_KEY}`);
+          const d = await r.json();
+          const flatrate = d.results?.ES?.flatrate || [];
+          const ourIds = [8, 1899, 119, 1773];
+          const match = flatrate.find(p => ourIds.includes(p.provider_id));
+          return match ? { ...x, _providerName: match.provider_name, _providerLogo: match.logo_path } : null;
+        } catch { return null; }
+      }));
+      items = provChecks.filter(Boolean);
     } else if (state.platform !== 'all') {
       const pid = PROVIDERS[state.platform].id;
       const type = state.mediaType;
-      let url = `https://api.themoviedb.org/3/discover/${type}?api_key=${API_KEY}&with_watch_providers=${pid}&watch_region=ES&language=es-ES&sort_by=popularity.desc&page=1`;
+      let url = `https://api.themoviedb.org/3/discover/${type}?api_key=${API_KEY}&with_watch_providers=${pid}&watch_region=ES&language=es-ES&sort_by=popularity.desc&page=${page}`;
       if (state.genreId) url += `&with_genres=${state.genreId}`;
       const res = await fetch(url);
       const data = await res.json();
-      items = (data.results || []).map(x => ({ ...x, media_type: type }));
+      state.totalPages = Math.min(data.total_pages || 1, 20);
+      const rawP = (data.results || []).map(x => ({ ...x, media_type: type }));
+      // Enrich and filter: only show items actually available on this platform in Spain
+      const enrichedP = await Promise.all(rawP.map(async x => {
+        try {
+          const r = await fetch(`https://api.themoviedb.org/3/${type}/${x.id}/watch/providers?api_key=${API_KEY}`);
+          const d = await r.json();
+          const flatrate = d.results?.ES?.flatrate || [];
+          const match = flatrate.find(p => p.provider_id === pid);
+          return match ? { ...x, _providerName: match.provider_name, _providerLogo: match.logo_path } : null;
+        } catch { return null; }
+      }));
+      items = enrichedP.filter(Boolean);
     } else {
-      // "Todas": solo contenido disponible en las 4 plataformas en España
       const type = state.mediaType;
-      let url = `https://api.themoviedb.org/3/discover/${type}?api_key=${API_KEY}&with_watch_providers=${ALL_PROVIDER_IDS}&watch_region=ES&language=es-ES&sort_by=popularity.desc&page=1`;
+      let url = `https://api.themoviedb.org/3/discover/${type}?api_key=${API_KEY}&with_watch_providers=${ALL_PROVIDER_IDS}&watch_region=ES&language=es-ES&sort_by=popularity.desc&page=${page}`;
       if (state.genreId) url += `&with_genres=${state.genreId}`;
       const res = await fetch(url);
       const data = await res.json();
-      items = (data.results || []).map(x => ({ ...x, media_type: type }));
+      state.totalPages = Math.min(data.total_pages || 1, 20);
+      const raw2 = (data.results || []).map(x => ({ ...x, media_type: type }));
+      const enriched = await Promise.all(raw2.map(async x => {
+        try {
+          const r = await fetch(`https://api.themoviedb.org/3/${type}/${x.id}/watch/providers?api_key=${API_KEY}`);
+          const d = await r.json();
+          const flatrate = d.results?.ES?.flatrate || [];
+          const ourIds = [8, 1899, 119, 1773];
+          const match = flatrate.find(p => ourIds.includes(p.provider_id));
+          return match ? { ...x, _providerName: match.provider_name, _providerLogo: match.logo_path } : null;
+        } catch { return x; }
+      }));
+      items = enriched.filter(Boolean);
     }
 
-    state.results = items;
-    renderCatalog(items);
+    document.getElementById('bottomLoader')?.remove();
+
+    if (append) {
+      state.results = [...state.results, ...items];
+      appendCatalog(items);
+    } else {
+      state.results = items;
+      renderCatalog(items);
+    }
   } catch(e) {
-    document.getElementById('mainContent').innerHTML = '<div class="empty-state"><div class="emoji">⚠️</div><h3>Error de conexión</h3><p>Comprueba tu conexión a internet</p></div>';
+    document.getElementById('bottomLoader')?.remove();
+    if (!append) document.getElementById('mainContent').innerHTML = '<div class="empty-state"><div class="emoji">⚠️</div><h3>Error de conexión</h3><p>Comprueba tu conexión a internet</p></div>';
   }
   state.loading = false;
 }
 
-function getPlatformBadge(platformKey) {
+function fetchCatalog() {
+  state.page = 1;
+  state.totalPages = 1;
+  fetchPage(1, false);
+}
+
+function getPlatformBadge(platformKey, item) {
+  // If item has provider logo from enrichment, use small logo badge
+  if (item && item._providerLogo) {
+    return `<img class="card-provider-logo" src="https://image.tmdb.org/t/p/original${item._providerLogo}" alt="${item._providerName || ''}">`;
+  }
   if (!platformKey || platformKey === 'all') return '';
   const p = PROVIDERS[platformKey];
   if (!p) return '';
@@ -826,7 +902,7 @@ function renderCatalog(items) {
     const poster = item.poster_path
       ? `<img class="card-poster" src="${IMG_BASE}${item.poster_path}" alt="${title}" loading="lazy">`
       : `<div class="card-poster-placeholder">🎬</div>`;
-    const badge = state.platform !== 'all' ? getPlatformBadge(state.platform) : '';
+    const badge = getPlatformBadge(state.platform, item);
     const btnClass = watched ? 'watched' : inList ? 'in-list' : '';
     const btnIcon = watched ? '✓' : inList ? '♥' : '+';
 
@@ -859,6 +935,69 @@ function renderCatalog(items) {
       quickToggle(parseInt(btn.dataset.id));
     });
   });
+
+  // Infinite scroll sentinel
+  setupInfiniteScroll();
+}
+
+function setupInfiniteScroll() {
+  const old = document.getElementById('scrollSentinel');
+  if (old) old.remove();
+  if (state.page >= state.totalPages) return;
+
+  const sentinel = document.createElement('div');
+  sentinel.id = 'scrollSentinel';
+  sentinel.style.height = '1px';
+  document.getElementById('mainContent').appendChild(sentinel);
+
+  const observer = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting && !state.loading && state.page < state.totalPages) {
+      state.page++;
+      fetchPage(state.page, true).then(() => {
+        observer.disconnect();
+        setupInfiniteScroll();
+      });
+    }
+  }, { rootMargin: '200px' });
+
+  observer.observe(sentinel);
+}
+
+function appendCatalog(items) {
+  const grid = document.querySelector('#mainContent .grid');
+  if (!grid || !items.length) return;
+  items.forEach(item => {
+    const title = item.title || item.name || 'Sin título';
+    const year = (item.release_date || item.first_air_date || '').slice(0,4);
+    const rating = item.vote_average ? item.vote_average.toFixed(1) : '';
+    const inList = isInWatchlist(item.id);
+    const watched = isWatched(item.id);
+    const poster = item.poster_path
+      ? `<img class="card-poster" src="${IMG_BASE}${item.poster_path}" alt="${title}" loading="lazy">`
+      : `<div class="card-poster-placeholder">🎬</div>`;
+    const badge = getPlatformBadge(state.platform, item);
+    const btnClass = watched ? 'watched' : inList ? 'in-list' : '';
+    const btnIcon = watched ? '✓' : inList ? '♥' : '+';
+
+    const div = document.createElement('div');
+    div.className = 'card';
+    div.dataset.id = item.id;
+    div.dataset.type = item.media_type || state.mediaType;
+    div.innerHTML = `${poster}${badge}<div class="card-watchlist-btn ${btnClass}" data-action="toggle" data-id="${item.id}">${btnIcon}</div><div class="card-body"><div class="card-title">${title}</div><div class="card-meta"><span class="card-year">${year}</span>${rating ? `<span class="card-rating">★ ${rating}</span>` : ''}</div></div>`;
+
+    div.addEventListener('click', (e) => {
+      if (e.target.dataset.action === 'toggle') return;
+      openModal(div.dataset.id, div.dataset.type);
+    });
+    div.querySelector('[data-action="toggle"]').addEventListener('click', (e) => {
+      e.stopPropagation();
+      quickToggle(parseInt(e.target.dataset.id));
+    });
+    grid.appendChild(div);
+  });
+
+  const count = document.getElementById('resultsCount');
+  count.textContent = `${state.results.length} resultado${state.results.length !== 1 ? 's' : ''}`;
 }
 
 function quickToggle(id) {
