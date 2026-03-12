@@ -446,6 +446,105 @@
     color: var(--muted);
     font-style: italic;
   }
+  .modal-note-section {
+    padding: 0 16px 4px;
+  }
+  .modal-note-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 8px;
+  }
+  .modal-note-input {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 14px;
+    resize: none;
+    height: 70px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .modal-note-input:focus { border-color: var(--accent2); }
+  .btn-save-note {
+    margin-top: 8px;
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: none;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-save-note:hover { border-color: var(--accent2); color: var(--text); }
+  .btn-save-note.saved { border-color: #2ecc71; color: #2ecc71; }
+
+  .modal-cast {
+    padding: 0 16px 12px;
+  }
+  .cast-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 10px;
+  }
+  .cast-scroll {
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+  .cast-scroll::-webkit-scrollbar { display: none; }
+  .cast-item {
+    flex-shrink: 0;
+    width: 60px;
+    text-align: center;
+    cursor: pointer;
+  }
+  .cast-item:hover .cast-name { color: var(--accent2); }
+  .cast-photo {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    object-fit: cover;
+    background: var(--bg3);
+    margin: 0 auto 4px;
+    display: block;
+    border: 2px solid var(--border);
+  }
+  .cast-name {
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.2;
+    transition: color 0.2s;
+  }
+  .cast-char {
+    font-size: 9px;
+    color: var(--border);
+    margin-top: 1px;
+  }
+  .note-badge {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    background: rgba(0,0,0,0.7);
+    border-radius: 4px;
+    padding: 2px 5px;
+    font-size: 10px;
+  }
+
   .providers-divider {
     height: 1px;
     background: var(--border);
@@ -709,10 +808,16 @@
       </div>
     </div>
     <div class="modal-overview" id="modalOverview"></div>
+    <div class="modal-cast" id="modalCast"></div>
     <div class="providers-divider"></div>
     <div class="modal-providers">
       <div class="providers-title">Disponible en</div>
       <div class="providers-list" id="modalProviders"><div class="no-providers">Buscando plataformas...</div></div>
+    </div>
+    <div class="modal-note-section">
+      <div class="modal-note-label">📝 Nota personal</div>
+      <textarea class="modal-note-input" id="modalNoteInput" placeholder="Ej: Está en Prime aunque no aparezca, estreno en abril..."></textarea>
+      <button class="btn btn-save-note" id="modalSaveNote">Guardar nota</button>
     </div>
     <div class="modal-actions">
       <button class="btn btn-primary" id="modalWatchlistBtn">+ Mi Lista</button>
@@ -753,6 +858,7 @@ let state = {
   watchlist: [],
   watched: [],
   currentItem: null,
+  notes: {},
   page: 1,
   totalPages: 1,
   loading: false,
@@ -761,7 +867,7 @@ let state = {
 const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbzZhWdOh4wWwNn25a4pCgSWCU5kq5HTGnDpVmO9wFSzLjiDC3uKjgo9vmzeefWVWCn85A/exec';
 
 async function saveStorage() {
-  const payload = JSON.stringify({ watchlist: state.watchlist, watched: state.watched });
+  const payload = JSON.stringify({ watchlist: state.watchlist, watched: state.watched, notes: state.notes });
   try {
     await fetch(SHEETS_URL, {
       method: 'POST',
@@ -779,6 +885,7 @@ async function loadStorage() {
     const data = JSON.parse(text);
     if (data && Array.isArray(data.watchlist)) state.watchlist = data.watchlist;
     if (data && Array.isArray(data.watched)) state.watched = data.watched;
+    if (data && typeof data.notes === 'object') state.notes = data.notes || {};
   } catch(e) {
     console.warn('Error cargando desde Google Sheets', e);
   }
@@ -801,6 +908,42 @@ function updateCounts() {
   else wl.textContent = '';
   if (state.watched.length) wd.textContent = `(${state.watched.length})`;
   else wd.textContent = '';
+}
+
+// SEARCH BY PERSON
+async function searchByPerson(personId, personName, internal = false) {
+  if (!internal) {
+    // Called from cast click — update UI state
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelector('[data-tab="catalog"]').classList.add('active');
+    state.tab = 'catalog';
+    document.getElementById('genreBar').style.display = '';
+    document.querySelector('.type-bar').style.display = '';
+    state.genreId = null;
+    state.platform = 'otros';
+    document.querySelectorAll('.platform-pill').forEach(p => p.classList.remove('active'));
+    document.querySelector('[data-platform="otros"]').classList.add('active');
+    document.getElementById('searchInput').value = personName;
+    document.getElementById('searchClear').style.display = 'block';
+    document.getElementById('mainContent').innerHTML = '<div class="loader"><div class="spinner"></div></div>';
+  }
+
+  document.getElementById('resultsCount').textContent = `Buscando títulos de ${personName}...`;
+
+  try {
+    const url = `https://api.themoviedb.org/3/person/${personId}/combined_credits?api_key=${API_KEY}&language=es-ES`;
+    const res = await fetch(url);
+    const data = await res.json();
+    const items = (data.cast || [])
+      .filter(x => x.media_type === 'movie' || x.media_type === 'tv')
+      .sort((a,b) => (b.popularity||0) - (a.popularity||0))
+      .slice(0, 40);
+    state.results = items;
+    renderCatalog(items);
+    document.getElementById('resultsCount').textContent = `${items.length} títulos con ${personName}`;
+  } catch(e) {
+    document.getElementById('mainContent').innerHTML = '<div class="empty-state"><div class="emoji">⚠️</div><h3>Error</h3><p>No se pudo cargar la filmografía</p></div>';
+  }
 }
 
 // FETCH
@@ -826,11 +969,23 @@ async function fetchPage(page, append = false) {
     let items = [];
 
     if (state.searchQuery.length > 1) {
-      const url = `https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&query=${encodeURIComponent(state.searchQuery)}&language=es-ES&page=${page}&include_adult=false`;
+      const url = `https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&query=${encodeURIComponent(state.searchQuery)}&language=es-ES&page=${page}&include_adult=false&include_person_results=true`;
       const res = await fetch(url);
       const data = await res.json();
       state.totalPages = Math.min(data.total_pages || 1, 10);
-      const raw = (data.results || []).filter(x => x.media_type === 'movie' || x.media_type === 'tv');
+      // Check if top result is a person — if so, show their filmography
+      const personResult = (data.results || []).find(x => x.media_type === 'person');
+      const movieTvResults = (data.results || []).filter(x => x.media_type === 'movie' || x.media_type === 'tv');
+
+      if (personResult && movieTvResults.length === 0) {
+        // Only person found — load their credits
+        document.getElementById('bottomLoader')?.remove();
+        await searchByPerson(personResult.id, personResult.name, true);
+        state.loading = false;
+        return;
+      }
+
+      const raw = movieTvResults;
       if (state.platform === 'otros') {
         // No platform filter — show everything with provider badge if available
         const enriched = await Promise.all(raw.map(async x => {
@@ -974,12 +1129,14 @@ function renderCatalog(items) {
       ? `<img class="card-poster" src="${IMG_BASE}${item.poster_path}" alt="${title}" loading="lazy">`
       : `<div class="card-poster-placeholder">🎬</div>`;
     const badge = getPlatformBadge(state.platform, item);
+    const noteBadge = state.notes[item.id] ? '<div class="note-badge">📝</div>' : '';
     const btnClass = watched ? 'watched' : inList ? 'in-list' : '';
     const btnIcon = watched ? '✓' : inList ? '♥' : '+';
 
     return `<div class="card" data-id="${item.id}" data-type="${item.media_type || state.mediaType}">
       ${poster}
       ${badge}
+      ${noteBadge}
       <div class="card-watchlist-btn ${btnClass}" data-action="toggle" data-id="${item.id}">${btnIcon}</div>
       <div class="card-body">
         <div class="card-title">${title}</div>
@@ -1047,6 +1204,7 @@ function appendCatalog(items) {
       ? `<img class="card-poster" src="${IMG_BASE}${item.poster_path}" alt="${title}" loading="lazy">`
       : `<div class="card-poster-placeholder">🎬</div>`;
     const badge = getPlatformBadge(state.platform, item);
+    const noteBadge = state.notes[item.id] ? '<div class="note-badge">📝</div>' : '';
     const btnClass = watched ? 'watched' : inList ? 'in-list' : '';
     const btnIcon = watched ? '✓' : inList ? '♥' : '+';
 
@@ -1110,6 +1268,13 @@ async function openModal(id, type) {
   const genres = (item.genres || []).map(g => g.name).slice(0,3).join(' · ');
   const runtime = item.runtime ? `${item.runtime} min` : (item.number_of_seasons ? `${item.number_of_seasons} temp.` : '');
 
+  // Load saved note
+  const noteInput = document.getElementById('modalNoteInput');
+  const saveNoteBtn = document.getElementById('modalSaveNote');
+  noteInput.value = state.notes[item.id] || '';
+  saveNoteBtn.textContent = 'Guardar nota';
+  saveNoteBtn.className = 'btn-save-note';
+
   document.getElementById('modalTitle').textContent = title;
   document.getElementById('modalOverview').textContent = item.overview || 'Sin descripción disponible.';
   document.getElementById('modalPoster').src = item.poster_path ? `${IMG_ORIGINAL}${item.poster_path}` : '';
@@ -1128,6 +1293,35 @@ async function openModal(id, type) {
   const esProviders = provData.results && provData.results.ES;
   const flatrate = esProviders && esProviders.flatrate;
   const provContainer = document.getElementById('modalProviders');
+
+  // Fetch cast
+  try {
+    const creditsUrl = `https://api.themoviedb.org/3/${type}/${id}/credits?api_key=${API_KEY}&language=es-ES`;
+    const creditsRes = await fetch(creditsUrl);
+    const creditsData = await creditsRes.json();
+    const cast = (creditsData.cast || []).slice(0, 15);
+    const crew = (creditsData.crew || []).filter(x => x.job === 'Director').slice(0, 3);
+    const allPeople = [...crew.map(x => ({...x, _role: 'Director'})), ...cast.map(x => ({...x, _role: x.character}))];
+    const castContainer = document.getElementById('modalCast');
+    if (allPeople.length) {
+      castContainer.innerHTML = `<div class="cast-title">Reparto y dirección</div>
+        <div class="cast-scroll">${allPeople.map(p => `
+          <div class="cast-item" data-person-id="${p.id}" data-person-name="${(p.name||'').replace(/"/g,'&quot;')}">
+            <img class="cast-photo" src="${p.profile_path ? IMG_BASE+p.profile_path : 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 52 52%22><circle cx=%2226%22 cy=%2220%22 r=%2212%22 fill=%22%23444%22/><ellipse cx=%2226%22 cy=%2244%22 rx=%2218%22 ry=%2212%22 fill=%22%23444%22/></svg>'}" alt="${p.name}">
+            <div class="cast-name">${p.name}</div>
+            <div class="cast-char">${p._role || ''}</div>
+          </div>`).join('')}
+        </div>`;
+      castContainer.querySelectorAll('.cast-item').forEach(el => {
+        el.addEventListener('click', () => {
+          document.getElementById('modalOverlay').classList.remove('open');
+          searchByPerson(el.dataset.personId, el.dataset.personName);
+        });
+      });
+    } else {
+      castContainer.innerHTML = '';
+    }
+  } catch(e) { document.getElementById('modalCast').innerHTML = ''; }
 
   if (flatrate && flatrate.length > 0) {
     provContainer.innerHTML = flatrate.map(p => `
@@ -1161,6 +1355,24 @@ function updateModalButtons(id) {
     wdBtn.className = 'btn btn-secondary';
   }
 }
+
+document.getElementById('modalSaveNote').addEventListener('click', () => {
+  const item = state.currentItem;
+  if (!item) return;
+  const val = document.getElementById('modalNoteInput').value.trim();
+  if (val) {
+    state.notes[item.id] = val;
+  } else {
+    delete state.notes[item.id];
+  }
+  saveStorage();
+  const btn = document.getElementById('modalSaveNote');
+  btn.textContent = '✓ Guardado';
+  btn.classList.add('saved');
+  setTimeout(() => { btn.textContent = 'Guardar nota'; btn.classList.remove('saved'); }, 2000);
+  // Refresh catalog cards to show/hide note badge
+  if (state.tab === 'catalog') renderCatalog(state.results);
+});
 
 document.getElementById('modalWatchlistBtn').addEventListener('click', () => {
   const item = state.currentItem;
