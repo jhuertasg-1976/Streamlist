@@ -683,9 +683,9 @@
   <div class="tab" data-tab="watched">Visto <span id="watchedCount"></span></div>
 </div>
 <div class="type-bar">
-  <div class="type-btn active" data-type="movie">🎬 Películas</div>
+  <div class="type-btn active" data-type="all">🎭 Ambas</div>
+  <div class="type-btn" data-type="movie">🎬 Películas</div>
   <div class="type-btn" data-type="tv">📺 Series</div>
-  <div class="type-btn" data-type="all">🎭 Ambas</div>
 </div>
 
 <div class="genre-bar" id="genreBar"></div>
@@ -746,7 +746,7 @@ const GENRES_TV = {10759:'Acción',16:'Animación',35:'Comedia',80:'Crimen',99:'
 let state = {
   tab: 'catalog',
   platform: 'all',
-  mediaType: 'movie', // 'movie', 'tv', or 'all'
+  mediaType: 'all', // 'movie', 'tv', or 'all'
   searchQuery: '',
   genreId: null,
   results: [],
