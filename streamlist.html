@@ -170,6 +170,7 @@
   .dot-hbo { background: var(--hbo); }
   .dot-prime { background: var(--prime); }
   .dot-sky { background: var(--sky); }
+  .dot-otros { background: var(--muted); }
 
   /* TABS */
   .tabs {
@@ -592,6 +593,31 @@
   }
   .toast.show { transform: translateX(-50%) translateY(0); }
 
+  /* TYPE BAR */
+  .type-bar {
+    display: flex;
+    padding: 10px 16px 0;
+    gap: 8px;
+  }
+  .type-btn {
+    flex: 1;
+    text-align: center;
+    padding: 7px 4px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg2);
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .type-btn.active {
+    background: var(--bg3);
+    border-color: var(--accent);
+    color: var(--text);
+  }
+
   /* GENRE FILTER */
   .genre-bar {
     display: flex;
@@ -632,7 +658,7 @@
   <div class="header-top">
     <div class="logo">STREAMLIST</div>
     <div class="header-actions">
-      <div class="icon-btn" id="typeToggle" title="Películas/Series">🎬</div>
+  
     </div>
   </div>
   <div class="search-bar">
@@ -648,12 +674,18 @@
   <div class="platform-pill" data-platform="hbo"><span class="dot dot-hbo"></span>HBO Max</div>
   <div class="platform-pill" data-platform="prime"><span class="dot dot-prime"></span>Prime</div>
   <div class="platform-pill" data-platform="sky"><span class="dot dot-sky"></span>SkyShowtime</div>
+  <div class="platform-pill" data-platform="otros"><span class="dot dot-otros"></span>Otros</div>
 </div>
 
 <div class="tabs">
   <div class="tab active" data-tab="catalog">Catálogo</div>
   <div class="tab" data-tab="watchlist">Mi Lista <span id="watchlistCount"></span></div>
   <div class="tab" data-tab="watched">Visto <span id="watchedCount"></span></div>
+</div>
+<div class="type-bar">
+  <div class="type-btn active" data-type="movie">🎬 Películas</div>
+  <div class="type-btn" data-type="tv">📺 Series</div>
+  <div class="type-btn" data-type="all">🎭 Ambas</div>
 </div>
 
 <div class="genre-bar" id="genreBar"></div>
@@ -706,6 +738,7 @@ const PROVIDERS = {
 };
 // IDs combinados para mostrar solo contenido en alguna de estas plataformas en España
 const ALL_PROVIDER_IDS = '8|1899|119|1773';
+// 'otros' means no provider filter — show everything
 
 const GENRES_MOVIE = {28:'Acción',12:'Aventura',16:'Animación',35:'Comedia',80:'Crimen',99:'Documental',18:'Drama',10751:'Familia',14:'Fantasía',36:'Historia',27:'Terror',10402:'Música',9648:'Misterio',10749:'Romance',878:'Ciencia Ficción',10770:'TV Movie',53:'Thriller',10752:'Bélica',37:'Western'};
 const GENRES_TV = {10759:'Acción',16:'Animación',35:'Comedia',80:'Crimen',99:'Documental',18:'Drama',10751:'Familia',10762:'Infantil',9648:'Misterio',10763:'Noticias',10764:'Reality',10765:'Sci-Fi',10766:'Telenovela',10767:'Talk Show',10768:'Guerra',37:'Western'};
@@ -713,7 +746,7 @@ const GENRES_TV = {10759:'Acción',16:'Animación',35:'Comedia',80:'Crimen',99:'
 let state = {
   tab: 'catalog',
   platform: 'all',
-  mediaType: 'movie',
+  mediaType: 'movie', // 'movie', 'tv', or 'all'
   searchQuery: '',
   genreId: null,
   results: [],
@@ -779,13 +812,15 @@ async function fetchPage(page, append = false) {
     document.getElementById('mainContent').innerHTML = '<div class="loader"><div class="spinner"></div></div>';
     state.results = [];
   } else {
-    // Show inline loader at bottom
     const loader = document.createElement('div');
     loader.className = 'loader';
     loader.id = 'bottomLoader';
     loader.innerHTML = '<div class="spinner"></div>';
     document.getElementById('mainContent').appendChild(loader);
   }
+
+  // Resolve which media types to fetch
+  const typesToFetch = state.mediaType === 'all' ? ['movie', 'tv'] : [state.mediaType];
 
   try {
     let items = [];
@@ -796,30 +831,64 @@ async function fetchPage(page, append = false) {
       const data = await res.json();
       state.totalPages = Math.min(data.total_pages || 1, 10);
       const raw = (data.results || []).filter(x => x.media_type === 'movie' || x.media_type === 'tv');
-      const provChecks = await Promise.all(raw.map(async x => {
+      if (state.platform === 'otros') {
+        // No platform filter — show everything with provider badge if available
+        const enriched = await Promise.all(raw.map(async x => {
+          try {
+            const r = await fetch(`https://api.themoviedb.org/3/${x.media_type}/${x.id}/watch/providers?api_key=${API_KEY}`);
+            const d = await r.json();
+            const flatrate = d.results?.ES?.flatrate || [];
+            return flatrate.length ? { ...x, _providerName: flatrate[0].provider_name, _providerLogo: flatrate[0].logo_path } : x;
+          } catch { return x; }
+        }));
+        items = enriched;
+      } else {
+        const ourIds = state.platform === 'all' ? [8, 1899, 119, 1773] : [PROVIDERS[state.platform].id];
+        const provChecks = await Promise.all(raw.map(async x => {
+          try {
+            const r = await fetch(`https://api.themoviedb.org/3/${x.media_type}/${x.id}/watch/providers?api_key=${API_KEY}`);
+            const d = await r.json();
+            const flatrate = d.results?.ES?.flatrate || [];
+            const match = flatrate.find(p => ourIds.includes(p.provider_id));
+            return match ? { ...x, _providerName: match.provider_name, _providerLogo: match.logo_path } : null;
+          } catch { return null; }
+        }));
+        items = provChecks.filter(Boolean);
+      }
+    } else if (state.platform === 'otros') {
+      // "Otros": no provider filter, show everything, enrich with first available provider
+      const allItems = await Promise.all(typesToFetch.map(async type => {
+        let url = `https://api.themoviedb.org/3/discover/${type}?api_key=${API_KEY}&language=es-ES&sort_by=popularity.desc&page=${page}&watch_region=ES`;
+        if (state.genreId) url += `&with_genres=${state.genreId}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        state.totalPages = Math.min(data.total_pages || 1, 20);
+        return (data.results || []).map(x => ({ ...x, media_type: type }));
+      }));
+      const raw = allItems.flat();
+      const enriched = await Promise.all(raw.map(async x => {
         try {
           const r = await fetch(`https://api.themoviedb.org/3/${x.media_type}/${x.id}/watch/providers?api_key=${API_KEY}`);
           const d = await r.json();
           const flatrate = d.results?.ES?.flatrate || [];
-          const ourIds = [8, 1899, 119, 1773];
-          const match = flatrate.find(p => ourIds.includes(p.provider_id));
-          return match ? { ...x, _providerName: match.provider_name, _providerLogo: match.logo_path } : null;
-        } catch { return null; }
+          return flatrate.length ? { ...x, _providerName: flatrate[0].provider_name, _providerLogo: flatrate[0].logo_path } : x;
+        } catch { return x; }
       }));
-      items = provChecks.filter(Boolean);
+      items = enriched;
     } else if (state.platform !== 'all') {
       const pid = PROVIDERS[state.platform].id;
-      const type = state.mediaType;
-      let url = `https://api.themoviedb.org/3/discover/${type}?api_key=${API_KEY}&with_watch_providers=${pid}&watch_region=ES&language=es-ES&sort_by=popularity.desc&page=${page}`;
-      if (state.genreId) url += `&with_genres=${state.genreId}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      state.totalPages = Math.min(data.total_pages || 1, 20);
-      const rawP = (data.results || []).map(x => ({ ...x, media_type: type }));
-      // Enrich and filter: only show items actually available on this platform in Spain
+      const allItems = await Promise.all(typesToFetch.map(async type => {
+        let url = `https://api.themoviedb.org/3/discover/${type}?api_key=${API_KEY}&with_watch_providers=${pid}&watch_region=ES&language=es-ES&sort_by=popularity.desc&page=${page}`;
+        if (state.genreId) url += `&with_genres=${state.genreId}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        state.totalPages = Math.min(data.total_pages || 1, 20);
+        return (data.results || []).map(x => ({ ...x, media_type: type }));
+      }));
+      const rawP = allItems.flat();
       const enrichedP = await Promise.all(rawP.map(async x => {
         try {
-          const r = await fetch(`https://api.themoviedb.org/3/${type}/${x.id}/watch/providers?api_key=${API_KEY}`);
+          const r = await fetch(`https://api.themoviedb.org/3/${x.media_type}/${x.id}/watch/providers?api_key=${API_KEY}`);
           const d = await r.json();
           const flatrate = d.results?.ES?.flatrate || [];
           const match = flatrate.find(p => p.provider_id === pid);
@@ -828,16 +897,18 @@ async function fetchPage(page, append = false) {
       }));
       items = enrichedP.filter(Boolean);
     } else {
-      const type = state.mediaType;
-      let url = `https://api.themoviedb.org/3/discover/${type}?api_key=${API_KEY}&with_watch_providers=${ALL_PROVIDER_IDS}&watch_region=ES&language=es-ES&sort_by=popularity.desc&page=${page}`;
-      if (state.genreId) url += `&with_genres=${state.genreId}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      state.totalPages = Math.min(data.total_pages || 1, 20);
-      const raw2 = (data.results || []).map(x => ({ ...x, media_type: type }));
+      const allItems = await Promise.all(typesToFetch.map(async type => {
+        let url = `https://api.themoviedb.org/3/discover/${type}?api_key=${API_KEY}&with_watch_providers=${ALL_PROVIDER_IDS}&watch_region=ES&language=es-ES&sort_by=popularity.desc&page=${page}`;
+        if (state.genreId) url += `&with_genres=${state.genreId}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        state.totalPages = Math.min(data.total_pages || 1, 20);
+        return (data.results || []).map(x => ({ ...x, media_type: type }));
+      }));
+      const raw2 = allItems.flat();
       const enriched = await Promise.all(raw2.map(async x => {
         try {
-          const r = await fetch(`https://api.themoviedb.org/3/${type}/${x.id}/watch/providers?api_key=${API_KEY}`);
+          const r = await fetch(`https://api.themoviedb.org/3/${x.media_type}/${x.id}/watch/providers?api_key=${API_KEY}`);
           const d = await r.json();
           const flatrate = d.results?.ES?.flatrate || [];
           const ourIds = [8, 1899, 119, 1773];
@@ -1221,10 +1292,12 @@ document.querySelectorAll('.tab').forEach(tab => {
     state.genreId = null;
     if (state.tab === 'catalog') {
       document.getElementById('genreBar').style.display = '';
+      document.querySelector('.type-bar').style.display = '';
       renderGenreBar();
       fetchCatalog();
     } else {
       document.getElementById('genreBar').style.display = 'none';
+      document.querySelector('.type-bar').style.display = 'none';
       renderListTab();
     }
   });
@@ -1242,14 +1315,16 @@ document.querySelectorAll('.platform-pill').forEach(pill => {
   });
 });
 
-// MEDIA TYPE TOGGLE
-const typeBtn = document.getElementById('typeToggle');
-typeBtn.addEventListener('click', () => {
-  state.mediaType = state.mediaType === 'movie' ? 'tv' : 'movie';
-  typeBtn.textContent = state.mediaType === 'movie' ? '🎬' : '📺';
-  state.genreId = null;
-  renderGenreBar();
-  fetchCatalog();
+// MEDIA TYPE BUTTONS
+document.querySelectorAll('.type-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.mediaType = btn.dataset.type;
+    state.genreId = null;
+    renderGenreBar();
+    fetchCatalog();
+  });
 });
 
 // SEARCH
