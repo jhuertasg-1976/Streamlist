@@ -208,11 +208,11 @@
   /* GRID */
   .grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
   }
   @media (min-width: 480px) {
-    .grid { grid-template-columns: repeat(3, 1fr); }
+    .grid { grid-template-columns: repeat(4, 1fr); }
   }
 
   /* CARD */
@@ -337,6 +337,7 @@
   .modal {
     background: var(--bg2);
     border-radius: 20px 20px 0 0;
+    position: relative;
     width: 100%;
     max-width: 600px;
     max-height: 90vh;
@@ -349,6 +350,26 @@
     from { transform: translateY(100%); }
     to { transform: translateY(0); }
   }
+
+  .modal-close {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--bg3);
+    color: var(--text);
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    transition: background 0.2s;
+  }
+  .modal-close:hover { background: var(--border); }
 
   .modal-handle {
     width: 40px;
@@ -535,6 +556,26 @@
     color: var(--border);
     margin-top: 1px;
   }
+  .card-exclude-btn {
+    position: absolute;
+    bottom: 40px;
+    right: 6px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(255,255,255,0.15);
+    opacity: 0.7;
+    transition: opacity 0.2s;
+  }
+  .card-exclude-btn:hover { opacity: 1; }
+
   .note-badge {
     position: absolute;
     bottom: 8px;
@@ -744,6 +785,64 @@
     color: white;
   }
 
+  .decade-bar {
+    display: flex;
+    gap: 6px;
+    padding: 8px 16px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .decade-bar::-webkit-scrollbar { display: none; }
+  .decade-chip {
+    padding: 5px 10px;
+    border-radius: 14px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-size: 11px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+  .decade-chip.active {
+    background: var(--bg3);
+    border-color: var(--accent2);
+    color: var(--accent2);
+  }
+  .excluded-toggle { margin-left: auto; }
+  .excluded-toggle.active {
+    background: var(--bg3);
+    border-color: #e67e22;
+    color: #e67e22;
+  }
+
+  .sort-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px 4px;
+  }
+  .sort-label {
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .sort-select {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 12px;
+    padding: 5px 8px;
+    outline: none;
+    cursor: pointer;
+    flex: 1;
+  }
+  .sort-select:focus { border-color: var(--accent2); }
+
   .results-count {
     font-size: 13px;
     color: var(--muted);
@@ -782,12 +881,31 @@
   <div class="tab" data-tab="watched">Visto <span id="watchedCount"></span></div>
 </div>
 <div class="type-bar">
-  <div class="type-btn active" data-type="all">🎭 Ambas</div>
-  <div class="type-btn" data-type="movie">🎬 Películas</div>
+  <div class="type-btn" data-type="all">🎭 Ambas</div>
+  <div class="type-btn active" data-type="movie">🎬 Películas</div>
   <div class="type-btn" data-type="tv">📺 Series</div>
 </div>
 
 <div class="genre-bar" id="genreBar"></div>
+<div class="decade-bar" id="decadeBar">
+  <div class="decade-chip active" data-decade="all">Todo</div>
+  <div class="decade-chip" data-decade="pre1980">Antes 1980</div>
+  <div class="decade-chip" data-decade="1980">80s</div>
+  <div class="decade-chip" data-decade="1990">90s</div>
+  <div class="decade-chip" data-decade="2000">2000s</div>
+  <div class="decade-chip" data-decade="2010">2010s</div>
+  <div class="decade-chip" data-decade="2020">2020s</div>
+  <div class="decade-chip excluded-toggle" id="excludedToggle">🚫 Excluidas</div>
+</div>
+<div class="sort-bar">
+  <span class="sort-label">Ordenar:</span>
+  <select class="sort-select" id="sortSelect">
+    <option value="popularity.desc">Popularidad</option>
+    <option value="primary_release_date.desc">Más recientes primero</option>
+    <option value="primary_release_date.asc">Más antiguas primero</option>
+    <option value="vote_average.desc">Mejor valoradas</option>
+  </select>
+</div>
 <div class="results-count" id="resultsCount"></div>
 
 <main id="mainContent">
@@ -798,6 +916,7 @@
 <div class="modal-overlay" id="modalOverlay">
   <div class="modal" id="modal">
     <div class="modal-handle"></div>
+    <button class="modal-close" id="modalClose">✕</button>
     <div class="modal-hero">
       <div class="modal-poster">
         <img id="modalPoster" src="" alt="">
@@ -851,7 +970,7 @@ const GENRES_TV = {10759:'Acción',16:'Animación',35:'Comedia',80:'Crimen',99:'
 let state = {
   tab: 'catalog',
   platform: 'all',
-  mediaType: 'all', // 'movie', 'tv', or 'all'
+  mediaType: 'movie', // 'movie', 'tv', or 'all'
   searchQuery: '',
   genreId: null,
   results: [],
@@ -859,6 +978,10 @@ let state = {
   watched: [],
   currentItem: null,
   notes: {},
+  excluded: [],
+  showExcluded: false,
+  selectedDecades: [],  // empty = all
+  sortBy: 'popularity.desc',
   page: 1,
   totalPages: 1,
   loading: false,
@@ -867,7 +990,7 @@ let state = {
 const SHEETS_URL = 'https://script.google.com/macros/s/AKfycbzZhWdOh4wWwNn25a4pCgSWCU5kq5HTGnDpVmO9wFSzLjiDC3uKjgo9vmzeefWVWCn85A/exec';
 
 async function saveStorage() {
-  const payload = JSON.stringify({ watchlist: state.watchlist, watched: state.watched, notes: state.notes });
+  const payload = JSON.stringify({ watchlist: state.watchlist, watched: state.watched, notes: state.notes, excluded: state.excluded });
   try {
     await fetch(SHEETS_URL, {
       method: 'POST',
@@ -886,6 +1009,7 @@ async function loadStorage() {
     if (data && Array.isArray(data.watchlist)) state.watchlist = data.watchlist;
     if (data && Array.isArray(data.watched)) state.watched = data.watched;
     if (data && typeof data.notes === 'object') state.notes = data.notes || {};
+    if (data && Array.isArray(data.excluded)) state.excluded = data.excluded;
   } catch(e) {
     console.warn('Error cargando desde Google Sheets', e);
   }
@@ -934,10 +1058,19 @@ async function searchByPerson(personId, personName, internal = false) {
     const url = `https://api.themoviedb.org/3/person/${personId}/combined_credits?api_key=${API_KEY}&language=es-ES`;
     const res = await fetch(url);
     const data = await res.json();
-    const items = (data.cast || [])
-      .filter(x => x.media_type === 'movie' || x.media_type === 'tv')
+    const cast = (data.cast || []).filter(x => x.media_type === 'movie' || x.media_type === 'tv');
+    const crew = (data.crew || []).filter(x => x.media_type === 'movie' || x.media_type === 'tv');
+    // Merge cast and crew, deduplicate by id, sort by popularity
+    const merged = [...cast, ...crew];
+    const seen = new Set();
+    const unique = merged.filter(x => {
+      if (seen.has(x.id)) return false;
+      seen.add(x.id);
+      return true;
+    });
+    const items = unique
       .sort((a,b) => (b.popularity||0) - (a.popularity||0))
-      .slice(0, 40);
+      .slice(0, 60);
     state.results = items;
     renderCatalog(items);
     document.getElementById('resultsCount').textContent = `${items.length} títulos con ${personName}`;
@@ -1013,7 +1146,8 @@ async function fetchPage(page, append = false) {
     } else if (state.platform === 'otros') {
       // "Otros": no provider filter, show everything, enrich with first available provider
       const allItems = await Promise.all(typesToFetch.map(async type => {
-        let url = `https://api.themoviedb.org/3/discover/${type}?api_key=${API_KEY}&language=es-ES&sort_by=popularity.desc&page=${page}&watch_region=ES`;
+        const sortKeyO = state.sortBy.replace('primary_release_date', type === 'tv' ? 'first_air_date' : 'primary_release_date');
+        let url = `https://api.themoviedb.org/3/discover/${type}?api_key=${API_KEY}&language=es-ES&sort_by=${sortKeyO}&page=${page}&watch_region=ES`;
         if (state.genreId) url += `&with_genres=${state.genreId}`;
         const res = await fetch(url);
         const data = await res.json();
@@ -1033,7 +1167,8 @@ async function fetchPage(page, append = false) {
     } else if (state.platform !== 'all') {
       const pid = PROVIDERS[state.platform].id;
       const allItems = await Promise.all(typesToFetch.map(async type => {
-        let url = `https://api.themoviedb.org/3/discover/${type}?api_key=${API_KEY}&with_watch_providers=${pid}&watch_region=ES&language=es-ES&sort_by=popularity.desc&page=${page}`;
+        const sortKey = state.sortBy.replace('primary_release_date', type === 'tv' ? 'first_air_date' : 'primary_release_date');
+      let url = `https://api.themoviedb.org/3/discover/${type}?api_key=${API_KEY}&with_watch_providers=${pid}&watch_region=ES&language=es-ES&sort_by=${sortKey}&page=${page}`;
         if (state.genreId) url += `&with_genres=${state.genreId}`;
         const res = await fetch(url);
         const data = await res.json();
@@ -1053,7 +1188,8 @@ async function fetchPage(page, append = false) {
       items = enrichedP.filter(Boolean);
     } else {
       const allItems = await Promise.all(typesToFetch.map(async type => {
-        let url = `https://api.themoviedb.org/3/discover/${type}?api_key=${API_KEY}&with_watch_providers=${ALL_PROVIDER_IDS}&watch_region=ES&language=es-ES&sort_by=popularity.desc&page=${page}`;
+        const sortKeyA = state.sortBy.replace('primary_release_date', type === 'tv' ? 'first_air_date' : 'primary_release_date');
+        let url = `https://api.themoviedb.org/3/discover/${type}?api_key=${API_KEY}&with_watch_providers=${ALL_PROVIDER_IDS}&watch_region=ES&language=es-ES&sort_by=${sortKeyA}&page=${page}`;
         if (state.genreId) url += `&with_genres=${state.genreId}`;
         const res = await fetch(url);
         const data = await res.json();
@@ -1111,6 +1247,27 @@ function renderCatalog(items) {
   const main = document.getElementById('mainContent');
   const count = document.getElementById('resultsCount');
 
+  // Filter excluded unless showExcluded is active
+  if (!state.showExcluded) {
+    items = items.filter(x => !(state.excluded || []).includes(x.id));
+  }
+
+  // Filter by selected decades
+  if (state.selectedDecades && state.selectedDecades.length > 0 && !state.selectedDecades.includes('all')) {
+    items = items.filter(x => {
+      const y = parseInt((x.release_date || x.first_air_date || '0').slice(0,4));
+      return state.selectedDecades.some(d => {
+        if (d === 'pre1980') return y < 1980;
+        if (d === '1980') return y >= 1980 && y < 1990;
+        if (d === '1990') return y >= 1990 && y < 2000;
+        if (d === '2000') return y >= 2000 && y < 2010;
+        if (d === '2010') return y >= 2010 && y < 2020;
+        if (d === '2020') return y >= 2020;
+        return true;
+      });
+    });
+  }
+
   if (!items.length) {
     count.textContent = '';
     main.innerHTML = '<div class="empty-state"><div class="emoji">🎬</div><h3>Sin resultados</h3><p>Prueba con otro filtro o búsqueda</p></div>';
@@ -1130,6 +1287,8 @@ function renderCatalog(items) {
       : `<div class="card-poster-placeholder">🎬</div>`;
     const badge = getPlatformBadge(state.platform, item);
     const noteBadge = state.notes[item.id] ? '<div class="note-badge">📝</div>' : '';
+    const isExcluded = (state.excluded || []).includes(item.id);
+    const excludeBtn = `<div class="card-exclude-btn" data-exclude="${item.id}" title="Excluir">🚫</div>`;
     const btnClass = watched ? 'watched' : inList ? 'in-list' : '';
     const btnIcon = watched ? '✓' : inList ? '♥' : '+';
 
@@ -1137,6 +1296,7 @@ function renderCatalog(items) {
       ${poster}
       ${badge}
       ${noteBadge}
+      ${excludeBtn}
       <div class="card-watchlist-btn ${btnClass}" data-action="toggle" data-id="${item.id}">${btnIcon}</div>
       <div class="card-body">
         <div class="card-title">${title}</div>
@@ -1161,6 +1321,23 @@ function renderCatalog(items) {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       quickToggle(parseInt(btn.dataset.id));
+    });
+  });
+
+  main.querySelectorAll('[data-exclude]').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = parseInt(btn.dataset.exclude);
+      if (!state.excluded) state.excluded = [];
+      if (state.excluded.includes(id)) {
+        state.excluded = state.excluded.filter(x => x !== id);
+        showToast('Incluida de nuevo');
+      } else {
+        state.excluded.push(id);
+        showToast('🚫 Excluida del catálogo');
+      }
+      saveStorage();
+      renderCatalog(state.results);
     });
   });
 
@@ -1205,6 +1382,8 @@ function appendCatalog(items) {
       : `<div class="card-poster-placeholder">🎬</div>`;
     const badge = getPlatformBadge(state.platform, item);
     const noteBadge = state.notes[item.id] ? '<div class="note-badge">📝</div>' : '';
+    const isExcluded = (state.excluded || []).includes(item.id);
+    const excludeBtn = `<div class="card-exclude-btn" data-exclude="${item.id}" title="Excluir">🚫</div>`;
     const btnClass = watched ? 'watched' : inList ? 'in-list' : '';
     const btnIcon = watched ? '✓' : inList ? '♥' : '+';
 
@@ -1408,11 +1587,14 @@ document.getElementById('modalWatchedBtn').addEventListener('click', () => {
   if (state.tab === 'catalog') renderCatalog(state.results);
 });
 
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('open');
+  if (state.tab !== 'catalog') renderListTab();
+}
+
+document.getElementById('modalClose').addEventListener('click', closeModal);
 document.getElementById('modalOverlay').addEventListener('click', (e) => {
-  if (e.target === document.getElementById('modalOverlay')) {
-    document.getElementById('modalOverlay').classList.remove('open');
-    if (state.tab !== 'catalog') renderListTab();
-  }
+  if (e.target === document.getElementById('modalOverlay')) closeModal();
 });
 
 // WATCHLIST / WATCHED TABS
@@ -1505,11 +1687,15 @@ document.querySelectorAll('.tab').forEach(tab => {
     if (state.tab === 'catalog') {
       document.getElementById('genreBar').style.display = '';
       document.querySelector('.type-bar').style.display = '';
+      document.getElementById('decadeBar').style.display = '';
+      document.querySelector('.sort-bar').style.display = '';
       renderGenreBar();
       fetchCatalog();
     } else {
       document.getElementById('genreBar').style.display = 'none';
       document.querySelector('.type-bar').style.display = 'none';
+      document.getElementById('decadeBar').style.display = 'none';
+      document.querySelector('.sort-bar').style.display = 'none';
       renderListTab();
     }
   });
@@ -1525,6 +1711,39 @@ document.querySelectorAll('.platform-pill').forEach(pill => {
     renderGenreBar();
     fetchCatalog();
   });
+});
+
+// SORT
+document.getElementById('sortSelect').addEventListener('change', (e) => {
+  state.sortBy = e.target.value;
+  fetchCatalog();
+});
+
+// DECADE FILTER
+document.querySelectorAll('.decade-chip:not(.excluded-toggle)').forEach(chip => {
+  chip.addEventListener('click', () => {
+    const d = chip.dataset.decade;
+    if (d === 'all') {
+      state.selectedDecades = [];
+      document.querySelectorAll('.decade-chip:not(.excluded-toggle)').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+    } else {
+      // Toggle multi-select
+      document.querySelector('.decade-chip[data-decade="all"]').classList.remove('active');
+      chip.classList.toggle('active');
+      state.selectedDecades = Array.from(document.querySelectorAll('.decade-chip.active:not(.excluded-toggle)')).map(c => c.dataset.decade);
+      if (state.selectedDecades.length === 0) {
+        document.querySelector('.decade-chip[data-decade="all"]').classList.add('active');
+      }
+    }
+    if (state.tab === 'catalog') renderCatalog(state.results);
+  });
+});
+
+document.getElementById('excludedToggle').addEventListener('click', () => {
+  state.showExcluded = !state.showExcluded;
+  document.getElementById('excludedToggle').classList.toggle('active', state.showExcluded);
+  if (state.tab === 'catalog') renderCatalog(state.results);
 });
 
 // MEDIA TYPE BUTTONS
