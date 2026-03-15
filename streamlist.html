@@ -558,20 +558,20 @@
   }
   .card-exclude-btn {
     position: absolute;
-    bottom: 40px;
+    bottom: 38px;
     right: 6px;
-    width: 26px;
-    height: 26px;
+    width: 34px;
+    height: 34px;
     border-radius: 50%;
-    background: rgba(0,0,0,0.65);
+    background: rgba(0,0,0,0.72);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    font-size: 16px;
     cursor: pointer;
     backdrop-filter: blur(4px);
-    border: 1px solid rgba(255,255,255,0.15);
-    opacity: 0.7;
+    border: 1.5px solid rgba(255,255,255,0.2);
+    opacity: 0.85;
     transition: opacity 0.2s;
   }
   .card-exclude-btn:hover { opacity: 1; }
@@ -1385,6 +1385,31 @@ function setupInfiniteScroll() {
 function appendCatalog(items) {
   const grid = document.querySelector('#mainContent .grid');
   if (!grid || !items.length) return;
+
+  // Apply same filters as renderCatalog
+  if (!state.showExcluded) {
+    items = items.filter(x => !(state.excluded || []).includes(x.id));
+  }
+  if (!state.showWatched) {
+    const watchedIds = (state.watched || []).map(x => x.id);
+    items = items.filter(x => !watchedIds.includes(x.id));
+  }
+  if (state.selectedDecades && state.selectedDecades.length > 0 && !state.selectedDecades.includes('all')) {
+    items = items.filter(x => {
+      const y = parseInt((x.release_date || x.first_air_date || '0').slice(0,4));
+      return state.selectedDecades.some(d => {
+        if (d === 'pre1980') return y < 1980;
+        if (d === '1980') return y >= 1980 && y < 1990;
+        if (d === '1990') return y >= 1990 && y < 2000;
+        if (d === '2000') return y >= 2000 && y < 2010;
+        if (d === '2010') return y >= 2010 && y < 2020;
+        if (d === '2020') return y >= 2020;
+        return true;
+      });
+    });
+  }
+  if (!items.length) return;
+
   items.forEach(item => {
     const title = item.title || item.name || 'Sin título';
     const year = (item.release_date || item.first_air_date || '').slice(0,4);
