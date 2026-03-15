@@ -812,6 +812,12 @@
     color: var(--accent2);
   }
   .excluded-toggle { margin-left: auto; }
+  .watched-toggle.active {
+    background: var(--bg3);
+    border-color: #2ecc71;
+    color: #2ecc71;
+  }
+
   .excluded-toggle.active {
     background: var(--bg3);
     border-color: #e67e22;
@@ -896,6 +902,7 @@
   <div class="decade-chip" data-decade="2010">2010s</div>
   <div class="decade-chip" data-decade="2020">2020s</div>
   <div class="decade-chip excluded-toggle" id="excludedToggle">🚫 Excluidas</div>
+  <div class="decade-chip watched-toggle" id="watchedToggle">👁 Vistas</div>
 </div>
 <div class="sort-bar">
   <span class="sort-label">Ordenar:</span>
@@ -980,6 +987,7 @@ let state = {
   notes: {},
   excluded: [],
   showExcluded: false,
+  showWatched: false,
   selectedDecades: [],  // empty = all
   sortBy: 'popularity.desc',
   page: 1,
@@ -1250,6 +1258,12 @@ function renderCatalog(items) {
   // Filter excluded unless showExcluded is active
   if (!state.showExcluded) {
     items = items.filter(x => !(state.excluded || []).includes(x.id));
+  }
+
+  // Filter watched unless showWatched is active
+  if (!state.showWatched) {
+    const watchedIds = (state.watched || []).map(x => x.id);
+    items = items.filter(x => !watchedIds.includes(x.id));
   }
 
   // Filter by selected decades
@@ -1738,6 +1752,12 @@ document.querySelectorAll('.decade-chip:not(.excluded-toggle)').forEach(chip => 
     }
     if (state.tab === 'catalog') renderCatalog(state.results);
   });
+});
+
+document.getElementById('watchedToggle').addEventListener('click', () => {
+  state.showWatched = !state.showWatched;
+  document.getElementById('watchedToggle').classList.toggle('active', state.showWatched);
+  if (state.tab === 'catalog') renderCatalog(state.results);
 });
 
 document.getElementById('excludedToggle').addEventListener('click', () => {
